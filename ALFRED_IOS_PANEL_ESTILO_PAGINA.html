@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALFRED IOS — Panel de Licencias</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#080b12;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{width:100%;max-width:520px;background:#111722;border:1px solid #273044;border-radius:22px;padding:28px;box-shadow:0 20px 60px #0008}
+h1{margin:0 0 8px;font-size:28px}p{color:#9da8ba;margin:0 0 24px}
+label{display:block;margin:16px 0 7px;font-weight:bold;font-size:14px}
+input,button{width:100%;border-radius:12px;padding:14px;font-size:16px}
+input{background:#080c14;border:1px solid #303b50;color:#fff;outline:none}
+input:focus{border-color:#6d8cff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+button{border:0;background:#26344e;color:#fff;font-weight:bold;cursor:pointer}
+button:hover{filter:brightness(1.15)}
+#create{margin-top:18px;background:#315cff}
+#result{margin-top:20px;padding:16px;border-radius:14px;background:#080c14;border:1px solid #273044;display:none}
+.key{font-size:20px;font-weight:bold;word-break:break-all;margin:8px 0}
+.status{margin-top:8px;color:#9da8ba}
+.copy{margin-top:10px;background:#1d2739}
+.error{color:#ff7b7b}.ok{color:#72e6a5}
+.small{font-size:12px;color:#707c91;margin-top:14px}
+</style>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#060912;color:#fff;min-height:100vh;padding:24px}.page{width:100%;max-width:1050px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;border-radius:15px;background:linear-gradient(135deg,#315cff,#7c4dff);display:flex;align-items:center;justify-content:center;font-size:24px}h1{margin:0;font-size:25px}.sub{color:#8995aa;font-size:13px}.badge{padding:8px 12px;border-radius:999px;background:#0d1820;border:1px solid #263b32;color:#72e6a5;font-size:11px}.layout{display:grid;grid-template-columns:360px 1fr;gap:18px}.card{background:#0f1622;border:1px solid #202c40;border-radius:22px;padding:22px;box-shadow:0 18px 60px #0008}.card h2{margin:0 0 6px;font-size:18px}.desc{color:#8995aa;font-size:13px;margin:0 0 18px}label{display:block;margin:15px 0 7px;font-size:12px;font-weight:700;color:#b9c3d4}input,button{width:100%;border-radius:12px;padding:13px;font-size:15px}input{background:#070c15;border:1px solid #29364c;color:#fff;outline:none}input:focus{border-color:#5e7cff}.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.grid button{background:#182238;border:1px solid #2b3952}button{border:0;background:#315cff;color:#fff;font-weight:700;cursor:pointer}.grid button:hover{filter:brightness(1.15)}#create{margin-top:14px;background:linear-gradient(135deg,#315cff,#5747ff)}.result{margin-top:15px;padding:14px;border-radius:14px;background:#080d16;border:1px solid #263249;display:none}.key{font-size:18px;font-weight:800;word-break:break-all;margin:7px 0}.status{color:#aeb8c9;line-height:1.7}.ok{color:#72e6a5}.error{color:#ff7b7b}.small{font-size:11px;color:#69758a;margin-top:13px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}.toolbar button{width:auto;padding:10px 14px;background:#182238;border:1px solid #2b3952}.list{display:flex;flex-direction:column;gap:10px;max-height:600px;overflow:auto}.license{border:1px solid #222f44;background:#0a101b;border-radius:16px;padding:15px}.license-top{display:flex;justify-content:space-between;gap:10px;align-items:center}.license-key{font-weight:800;word-break:break-all}.state{font-size:11px;padding:5px 8px;border-radius:999px;background:#123323;color:#72e6a5}.state.off{background:#32181c;color:#ff8585}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.meta div{background:#080d16;border-radius:10px;padding:9px}.meta b{display:block;font-size:15px}.meta span{font-size:10px;color:#738097}.empty{text-align:center;color:#738097;padding:30px 10px}@media(max-width:800px){body{padding:14px}.layout{grid-template-columns:1fr}.badge{display:none}}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔐 ALFRED IOS</h1>
+  <p>Panel para crear licencias</p>
+
+  <label for="token">Admin Token</label>
+  <input id="token" type="password" placeholder="Escribe tu ADMIN_TOKEN">
+
+  <label>Duración de la licencia</label>
+  <div class="grid">
+    <button onclick="setDays(1)">1 día</button>
+    <button onclick="setDays(7)">7 días</button>
+    <button onclick="setDays(15)">15 días</button>
+    <button onclick="setDays(30)">30 días</button>
+  </div>
+
+  <input id="days" type="hidden" value="30">
+  <button id="create" onclick="createLicense()">✨ CREAR LICENCIA</button>
+
+  <label for="lookupKey">Consultar una licencia</label>
+  <input id="lookupKey" type="text" placeholder="Escribe la clave de licencia">
+  <button id="lookup" onclick="checkLicense()" style="margin-top:10px;background:#26344e">🔎 CONSULTAR LICENCIA</button>
+
+  <div class="toolbar" style="margin-top:20px">
+    <div><h2>Licencias creadas</h2><div class="desc" style="margin:3px 0 0">Todas tus claves y su tiempo de uso.</div></div>
+    <button style="width:auto;padding:10px 14px;background:#182238;border:1px solid #2b3952" onclick="loadLicenses()">🔄 Actualizar</button>
+  </div>
+  <div id="licenseList" class="list">
+    <div class="empty">Cargando licencias...</div>
+  </div>
+
+  <div id="checkResult" style="margin-top:20px;padding:16px;border-radius:14px;background:#080c14;border:1px solid #273044;display:none">
+    <div class="key" id="checkKey"></div>
+    <div class="status" id="checkInfo"></div>
+  </div>
+
+  <div id="result">
+    <div class="ok">Licencia creada correctamente</div>
+    <div class="key" id="licenseKey"></div>
+    <div class="status" id="licenseInfo"></div>
+    <button class="copy" onclick="copyKey()">📋 COPIAR LICENCIA</button>
+  </div>
+
+  <div class="small">La clave de administrador solo se usa para crear licencias y no se guarda en el HTML.</div>
+</div>
+
+<script>
+const API = "https://alfred-ios-api-1.onrender.com";
+
+function setDays(n){
+  document.getElementById("days").value=n;
+  document.querySelector("#create").textContent="✨ CREAR LICENCIA ("+n+" DÍA"+(n===1?"":"S")+")";
+}
+
+async function createLicense(){
+  const token=document.getElementById("token").value.trim();
+  const days=Number(document.getElementById("days").value);
+  const result=document.getElementById("result");
+
+  if(!token){ alert("Escribe tu Admin Token."); return; }
+
+  const btn=document.getElementById("create");
+  btn.disabled=true;
+  btn.textContent="CREANDO...";
+
+  try{
+    const res=await fetch(API+"/api/licenses",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "X-Admin-Token":token
+      },
+      body:JSON.stringify({days})
+    });
+
+    const data=await res.json().catch(()=>({}));
+
+    if(!res.ok){
+      throw new Error(data.message || "No se pudo crear la licencia.");
+    }
+
+    document.getElementById("licenseKey").textContent=data.key || data.license?.key || "Licencia creada";
+    document.getElementById("licenseInfo").textContent =
+      data.expiresAt ? "Vence: "+new Date(data.expiresAt).toLocaleString("es-DO") :
+      "Duración: "+days+" día"+(days===1?"":"s");
+    result.style.display="block";
+  }catch(e){
+    result.style.display="block";
+    result.innerHTML='<div class="error">❌ '+escapeHtml(e.message)+'</div>';
+  }finally{
+    btn.disabled=false;
+    setDays(days);
+  }
+}
+
+async function checkLicense(){
+  const key=document.getElementById("lookupKey").value.trim();
+  const box=document.getElementById("checkResult");
+  const info=document.getElementById("checkInfo");
+  const keyEl=document.getElementById("checkKey");
+
+  if(!key){ alert("Escribe una clave de licencia."); return; }
+
+  box.style.display="block";
+  keyEl.textContent=key;
+  info.textContent="CONSULTANDO...";
+
+  try{
+    const res=await fetch(API+"/api/license/"+encodeURIComponent(key));
+    const data=await res.json().catch(()=>({}));
+
+    if(!res.ok || !data){
+      throw new Error(data.message || "No se encontró la licencia.");
+    }
+
+    const expiresAt=data.expiresAt ? new Date(data.expiresAt) : null;
+    const now=new Date();
+    const active=data.active === true && (!expiresAt || expiresAt > now);
+
+    if(!expiresAt){
+      info.innerHTML=active
+        ? '<span class="ok">✅ ACTIVA</span><br>Duración/fecha de vencimiento no disponible.'
+        : '<span class="error">❌ INACTIVA</span>';
+      return;
+    }
+
+    const createdAt = data.createdAt ? new Date(data.createdAt) : null;
+    let usedDays = "No disponible";
+    let totalDays = "No disponible";
+    let remainingDays = Math.max(0, Math.ceil((expiresAt-now)/86400000));
+
+    if(createdAt && !isNaN(createdAt)){
+      totalDays = Math.max(1, Math.ceil((expiresAt-createdAt)/86400000));
+      usedDays = Math.max(0, Math.floor((now-createdAt)/86400000));
+    }
+
+    info.innerHTML =
+      (active ? '<span class="ok">✅ ACTIVA</span>' : '<span class="error">❌ VENCIDA / INACTIVA</span>') +
+      '<br>📅 Duración: '+totalDays+' día'+(totalDays===1?"":"s")+
+      '<br>⏳ Días usados: '+usedDays+
+      '<br>🟢 Días restantes: '+remainingDays+
+      '<br>📆 Vence: '+expiresAt.toLocaleString("es-DO");
+  }catch(e){
+    info.innerHTML='<div class="error">❌ '+escapeHtml(e.message)+'</div>';
+  }
+}
+
+function copyKey(){
+  const key=document.getElementById("licenseKey").textContent;
+  navigator.clipboard.writeText(key).then(()=>alert("Licencia copiada."));
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+}
+
+setDays(30);
+
+async function loadLicenses(){
+  const list=document.getElementById("licenseList");
+  if(!list)return;
+  list.innerHTML='<div class="empty">Cargando licencias...</div>';
+  try{
+    const token=document.getElementById("token").value.trim();
+    if(!token){ list.innerHTML='<div class="empty error">Escribe tu ADMIN TOKEN para ver las licencias.</div>'; return; }
+    const res=await fetch(API+"/api/licenses",{headers:{"X-Admin-Token":token}});
+    const data=await res.json().catch(()=>[]);
+    if(!res.ok) throw new Error(data.message || "La API no permite listar licencias.");
+    const arr=Array.isArray(data)?data:(data.licenses||[]);
+    if(!arr.length){list.innerHTML='<div class="empty">No hay licencias registradas.</div>';return;}
+    const now=new Date();
+    list.innerHTML=arr.map(l=>{
+      const key=l.key||"—", c=l.createdAt?new Date(l.createdAt):null, e=l.expiresAt?new Date(l.expiresAt):null;
+      const active=l.active===true&&(!e||e>now);
+      const total=c&&e?Math.max(1,Math.ceil((e-c)/86400000)):"—";
+      const used=c?Math.max(0,Math.floor((now-c)/86400000)):"—";
+      const rem=e?Math.max(0,Math.ceil((e-now)/86400000)):"—";
+      return '<div class="license"><div class="license-top"><div class="license-key">'+escapeHtml(key)+'</div><div class="state '+(active?'':'off')+'">'+(active?'ACTIVA':'VENCIDA')+'</div></div><div class="meta"><div><b>'+total+'</b><span>DURACIÓN</span></div><div><b>'+used+'</b><span>DÍAS USADOS</span></div><div><b>'+rem+'</b><span>RESTANTES</span></div></div><div class="small">Vence: '+(e?e.toLocaleString("es-DO"):"No disponible")+'</div></div>';
+    }).join("");
+  }catch(e){list.innerHTML='<div class="empty error">❌ '+escapeHtml(e.message)+'</div>';}
+}
+
+loadLicenses();
+</script>
+</body>
+</html>
