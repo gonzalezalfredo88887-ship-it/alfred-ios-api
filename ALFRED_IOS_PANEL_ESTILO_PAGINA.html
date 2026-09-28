@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070b12">
+<title>ALFRED IOS — Control Center</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#060910;--panel:#0d1420;--panel2:#0a101a;--line:#1d293b;--muted:#8290a6;--text:#f6f8fc;--blue:#3b6cff;--purple:#7657ff;--green:#35d58a;--red:#ff5368;--yellow:#ffc857}
+body{margin:0;background:radial-gradient(circle at 15% 0%,#111c35 0,transparent 30%),var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:18px}
+.page{max-width:1200px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:18px}
+.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;border-radius:15px;background:linear-gradient(135deg,var(--blue),var(--purple));display:grid;place-items:center;font-weight:900;font-size:22px;box-shadow:0 8px 30px #315cff30}
+h1,h2,p{margin-top:0}.sub{color:var(--muted);font-size:13px}.status{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#0b111b;padding:9px 12px;border-radius:999px;font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.on{background:var(--green);box-shadow:0 0 12px #35d58a}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.stat{background:linear-gradient(180deg,#101827,#0b111b);border:1px solid var(--line);border-radius:18px;padding:16px}.stat span{font-size:12px;color:var(--muted)}.stat b{display:block;font-size:27px;margin-top:5px}
+.card{background:rgba(13,20,32,.92);border:1px solid var(--line);border-radius:22px;padding:20px;margin-bottom:18px;box-shadow:0 15px 45px #00000022}
+.token{display:grid;grid-template-columns:1fr auto;gap:10px}input,button{border-radius:12px;padding:12px;font-size:14px}input{background:#070c15;border:1px solid #29364c;color:#fff;width:100%;outline:0}input:focus{border-color:var(--blue)}button{border:0;background:var(--blue);color:#fff;font-weight:800;cursor:pointer;transition:.18s}button:hover{transform:translateY(-1px);filter:brightness(1.08)}button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.dur{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.dur button,.actions button,.secondary{background:#182238;border:1px solid #2b3952}.dur button.selected{background:#29478e;border-color:#5277dc}.create{margin-top:12px;width:100%;background:linear-gradient(135deg,var(--blue),var(--purple))}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}.tools{display:flex;gap:8px;flex-wrap:wrap}.tools input{min-width:240px}.list{display:grid;gap:10px}.lic{border:1px solid #202d42;background:#09101a;border-radius:17px;padding:15px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.key{font-weight:850;word-break:break-all}.badge{font-size:11px;padding:5px 8px;border-radius:999px;background:#123323;color:#72e6a5;white-space:nowrap}.badge.off{background:#32181c;color:#ff8585}.badge.warn{background:#3b2d0e;color:#ffd56b}
+.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.meta div{background:#080d16;border-radius:10px;padding:9px}.meta b{display:block;font-size:13px}.meta span{font-size:10px;color:#738097}.actions{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}.actions button{width:auto}.actions .danger{background:#4a1820;border-color:#71303a}.actions .green{background:#123323;border-color:#275a3a}.actions .yellow{background:#382b0d;border-color:#69531d}
+.msg{margin-top:10px;color:#9aa6b8;font-size:13px}.empty{text-align:center;color:#738097;padding:30px}.note{padding:11px 13px;background:#09111d;border:1px solid var(--line);border-radius:12px;color:#8f9bb0;font-size:12px;margin-top:12px}
+.toast{position:fixed;right:18px;bottom:18px;background:#121b2a;border:1px solid #2b3952;border-radius:14px;padding:12px 15px;box-shadow:0 15px 40px #0008;opacity:0;transform:translateY(10px);pointer-events:none;transition:.2s;z-index:10}.toast.show{opacity:1;transform:none}
+@media(max-width:800px){.grid{grid-template-columns:1fr 1fr}.meta{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){body{padding:12px}.top{align-items:flex-start}.status{font-size:11px}.token{grid-template-columns:1fr}.toolbar{align-items:stretch;flex-direction:column}.tools input{min-width:0}.grid{grid-template-columns:1fr 1fr}.row{align-items:flex-start;flex-direction:column}.meta{grid-template-columns:1fr 1fr}.actions button{flex:1}.logo{width:44px;height:44px}h1{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top">
+    <div class="brand"><div class="logo">A</div><div><h1>ALFRED IOS</h1><div class="sub">API Control Center · Gestión de licencias</div></div></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="apiStatus">API no conectada</span></div>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><span>TOTAL LICENCIAS</span><b id="total">0</b></div>
+    <div class="stat"><span>ACTIVAS</span><b id="active">0</b></div>
+    <div class="stat"><span>BLOQUEADAS</span><b id="blocked">0</b></div>
+    <div class="stat"><span>DISPOSITIVOS</span><b id="devices">0</b></div>
+  </div>
+
+  <div class="card">
+    <h2>Administrador</h2>
+    <p class="sub">El token se utiliza únicamente para las solicitudes administrativas del panel.</p>
+    <div class="token"><input id="token" type="password" placeholder="ADMIN_TOKEN" autocomplete="off"><button onclick="loadLicenses()">CONECTAR</button></div>
+    <div class="dur">
+      <button data-days="1" onclick="setDays(1)">1 DÍA</button>
+      <button data-days="7" onclick="setDays(7)">7 DÍAS</button>
+      <button data-days="15" onclick="setDays(15)">15 DÍAS</button>
+      <button data-days="30" onclick="setDays(30)">30 DÍAS</button>
+    </div>
+    <input id="days" type="hidden" value="30">
+    <button id="create" class="create" onclick="createLicense()">CREAR LICENCIA DE 30 DÍAS</button>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <div><h2 style="margin:0">Licencias</h2><div class="sub">Control completo de keys y dispositivos.</div></div>
+      <div class="tools"><input id="search" placeholder="Buscar licencia..." oninput="renderFiltered()"><button class="secondary" onclick="loadLicenses()">↻ ACTUALIZAR</button></div>
+    </div>
+    <div id="list" class="list"><div class="empty">Introduce tu ADMIN_TOKEN y pulsa CONECTAR.</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Estado del sistema</h2>
+    <div class="note">API: <b id="apiUrl">https://alfred-ios-api-1.onrender.com</b><br>Las estadísticas de este panel se calculan con las licencias devueltas por la API.</div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const API="https://alfred-ios-api-1.onrender.com";
+const $=id=>document.getElementById(id);
+let licenses=[];
+
+function setDays(n){
+  $("days").value=n;
+  $("create").textContent="CREAR LICENCIA DE "+n+" DÍA"+(n===1?"":"S");
+  document.querySelectorAll(".dur button").forEach(b=>b.classList.toggle("selected",Number(b.dataset.days)===n));
+}
+async function api(path,opt={}){
+  const token=$("token").value.trim();
+  if(!token) throw Error("Introduce tu ADMIN_TOKEN.");
+  opt.headers={...(opt.headers||{}),"X-Admin-Token":token,"Content-Type":"application/json"};
+  const r=await fetch(API+path,opt);
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw Error(d.error||d.message||"Error de API");
+  return d;
+}
+function setConnected(ok){
+  $("dot").classList.toggle("on",ok);
+  $("apiStatus").textContent=ok?"API conectada":"API no conectada";
+}
+async function createLicense(){
+  const days=Number($("days").value);
+  $("msg").textContent="Creando licencia...";
+  try{
+    const d=await api("/api/licenses",{method:"POST",body:JSON.stringify({days})});
+    $("msg").textContent="✓ Creada: "+d.key+" • vence "+fmt(d.expiresAt);
+    toast("Licencia creada correctamente");
+    await loadLicenses();
+  }catch(e){setConnected(false);$("msg").textContent="❌ "+e.message;toast(e.message)}
+}
+async function loadLicenses(){
+  $("msg").textContent="Conectando...";
+  try{
+    const d=await api("/api/licenses");
+    licenses=d.licenses||[];
+    setConnected(true);
+    updateStats();
+    renderFiltered();
+    $("msg").textContent="✓ "+licenses.length+" licencia(s) cargada(s).";
+  }catch(e){
+    setConnected(false);
+    $("msg").textContent="❌ "+e.message;
+    toast(e.message);
+  }
+}
+function updateStats(){
+  $("total").textContent=licenses.length;
+  $("active").textContent=licenses.filter(x=>x.active).length;
+  $("blocked").textContent=licenses.filter(x=>x.blocked).length;
+  $("devices").textContent=licenses.filter(x=>x.deviceBound).length;
+}
+function renderFiltered(){
+  const q=$("search").value.trim().toLowerCase();
+  render(licenses.filter(x=>!q||String(x.key).toLowerCase().includes(q)));
+}
+function render(arr){
+  const list=$("list");
+  if(!arr.length){list.innerHTML='<div class="empty">'+(licenses.length?'No hay coincidencias.':'No hay licencias creadas.')+'</div>';return}
+  list.innerHTML=arr.map(x=>{
+    const badge=x.blocked?'<div class="badge off">BLOQUEADA</div>':x.active?'<div class="badge">ACTIVA</div>':'<div class="badge warn">VENCIDA</div>';
+    return `<div class="lic">
+      <div class="row"><div class="key">${esc(x.key)}</div>${badge}</div>
+      <div class="meta">
+        <div><b>${fmt(x.createdAt)}</b><span>CREADA</span></div>
+        <div><b>${fmt(x.expiresAt)}</b><span>VENCE</span></div>
+        <div><b>${x.deviceBound?"VINCULADO":"LIBRE"}</b><span>DISPOSITIVO</span></div>
+        <div><b>${fmt(x.lastUsedAt)}</b><span>ÚLTIMO USO</span></div>
+      </div>
+      <div class="actions">
+        <button onclick="copyKey('${escAttr(x.key)}')">COPIAR</button>
+        <button class="${x.blocked?"green":"danger"}" onclick="blockKey('${escAttr(x.key)}',${!x.blocked})">${x.blocked?"DESBLOQUEAR":"BLOQUEAR"}</button>
+        <button class="yellow" onclick="resetDevice('${escAttr(x.key)}')">RESET DISPOSITIVO</button>
+        <button class="danger" onclick="deleteKey('${escAttr(x.key)}')">ELIMINAR</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+async function blockKey(key,blocked){
+  if(!confirm((blocked?"¿Bloquear ":"¿Desbloquear ")+key+"?"))return;
+  try{await api("/api/licenses/"+encodeURIComponent(key)+"/block",{method:"POST",body:JSON.stringify({blocked})});toast(blocked?"Licencia bloqueada":"Licencia desbloqueada");await loadLicenses()}
+  catch(e){toast(e.message)}
+}
+async function resetDevice(key){
+  if(!confirm("¿Resetear el dispositivo de "+key+"? La próxima activación podrá vincular otro dispositivo."))return;
+  try{await api("/api/licenses/"+encodeURIComponent(key)+"/reset-device",{method:"POST"});toast("Dispositivo reseteado");await loadLicenses()}
+  catch(e){toast(e.message)}
+}
+async function deleteKey(key){
+  if(!confirm("¿Eliminar definitivamente "+key+"?"))return;
+  try{await api("/api/licenses/"+encodeURIComponent(key),{method:"DELETE"});toast("Licencia eliminada");await loadLicenses()}
+  catch(e){toast(e.message)}
+}
+async function copyKey(k){
+  try{await navigator.clipboard.writeText(k);toast("Key copiada")}
+  catch(e){toast("No se pudo copiar la key")}
+}
+function fmt(v){if(!v)return"—";const d=new Date(v);return isNaN(d)?"—":d.toLocaleString("es-DO")}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function escAttr(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
+let toastTimer;
+function toast(t){clearTimeout(toastTimer);$("toast").textContent=t;$("toast").classList.add("show");toastTimer=setTimeout(()=>$("toast").classList.remove("show"),2600)}
+setDays(30);
+</script>
+</body>
+</html>
