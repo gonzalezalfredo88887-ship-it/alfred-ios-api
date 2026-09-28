@@ -1,270 +1,285 @@
 const http = require("http");
-const fs = require("fs");
 const crypto = require("crypto");
 const { URL } = require("url");
+const { Pool } = require("pg");
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
-const DB_FILE = "./licenses.json";
+const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!ADMIN_TOKEN) console.warn("WARNING: ADMIN_TOKEN no está configurado.");
-
-function loadDb() {
-  try {
-    const data = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-    return data && typeof data === "object" ? data : {};
-  } catch {
-    return {};
-  }
+if (!ADMIN_TOKEN) {
+  console.error("ERROR: Falta la variable de entorno ADMIN_TOKEN.");
+  process.exit(1);
+}
+if (!DATABASE_URL) {
+  console.error("ERROR: Falta la variable de entorno DATABASE_URL.");
+  process.exit(1);
 }
 
-function saveDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-}
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
 
-function send(res, code, data) {
-  res.writeHead(code, {
+function sendJson(res, status, data) {
+  res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": "*"
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Cache-Control": "no-store"
   });
   res.end(JSON.stringify(data));
 }
 
+function adminAuthorized(req) {
+  return typeof req.headers["x-admin-token"] === "string" &&
+    req.headers["x-admin-token"] === ADMIN_TOKEN;
+}
+
+function requireAdmin(req, res) {
+  if (!adminAuthorized(req)) {
+    sendJson(res, 401, { error: "ADMIN_TOKEN inválido o ausente." });
+    return false;
+  }
+  return true;
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let s = "";
-    req.on("data", c => {
-      s += c;
-      if (s.length > 100000) {
+    let data = "";
+    req.on("data", chunk => {
+      data += chunk;
+      if (data.length > 1024 * 1024) {
+        reject(new Error("Request demasiado grande."));
         req.destroy();
-        reject(new Error("Body demasiado grande"));
       }
     });
     req.on("end", () => {
-      try { resolve(JSON.parse(s || "{}")); }
-      catch { reject(new Error("JSON inválido")); }
+      if (!data.trim()) return resolve({});
+      try { resolve(JSON.parse(data)); }
+      catch { reject(new Error("JSON inválido.")); }
     });
+    req.on("error", reject);
   });
 }
 
-function admin(req) {
-  return !!ADMIN_TOKEN && req.headers["x-admin-token"] === ADMIN_TOKEN;
+function makeKey() {
+  const a = crypto.randomBytes(4).toString("hex").toUpperCase();
+  const b = crypto.randomBytes(4).toString("hex").toUpperCase();
+  return `ALFRED-${a}-${b}`;
 }
 
-function hashDevice(deviceId) {
-  return crypto.createHash("sha256").update(String(deviceId)).digest("hex");
-}
-
-function keyPath(parts) {
-  return parts.slice(2).join("/");
-}
-
-function licenseView(key, item) {
-  const now = Date.now();
-  const expires = new Date(item.expiresAt).getTime();
-  const expired = !Number.isFinite(expires) || expires <= now;
-  const blocked = item.blocked === true || item.active === false;
+function normalizeLicense(row) {
+  const expiresAt = row.expires_at ? new Date(row.expires_at).toISOString() : null;
+  const createdAt = row.created_at ? new Date(row.created_at).toISOString() : null;
+  const lastUsedAt = row.last_used_at ? new Date(row.last_used_at).toISOString() : null;
   return {
-    key,
-    active: !expired && !blocked,
-    blocked,
-    createdAt: item.createdAt || null,
-    expiresAt: item.expiresAt,
-    deviceBound: !!item.deviceHash,
-    lastUsedAt: item.lastUsedAt || null,
-    message: blocked ? "Licencia bloqueada." : expired ? "Licencia vencida." : "Licencia activa."
+    key: row.key,
+    createdAt,
+    expiresAt,
+    blocked: Boolean(row.blocked),
+    active: !row.blocked && Boolean(row.expires_at) && new Date(row.expires_at).getTime() > Date.now(),
+    deviceBound: Boolean(row.device_id),
+    lastUsedAt
   };
 }
 
-const server = http.createServer(async (req, res) => {
-  const u = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  const parts = u.pathname.split("/").filter(Boolean);
+async function ensureSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS licenses (
+      id BIGSERIAL PRIMARY KEY,
+      key TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      blocked BOOLEAN NOT NULL DEFAULT FALSE,
+      device_id TEXT,
+      last_used_at TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_licenses_expires_at ON licenses (expires_at)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_licenses_device_id ON licenses (device_id)`);
+}
 
-  if (req.method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token"
-    });
-    return res.end();
+async function getLicense(key) {
+  const result = await pool.query(
+    `SELECT id, key, created_at, expires_at, blocked, device_id, last_used_at
+     FROM licenses WHERE key = $1 LIMIT 1`, [key]
+  );
+  return result.rows[0] || null;
+}
+
+async function listLicenses() {
+  const result = await pool.query(`
+    SELECT id, key, created_at, expires_at, blocked, device_id, last_used_at
+    FROM licenses ORDER BY created_at DESC
+  `);
+  return result.rows.map(normalizeLicense);
+}
+
+async function createLicense(body) {
+  const key = typeof body.key === "string" && body.key.trim() ? body.key.trim() : makeKey();
+  if (key.length > 200) throw new Error("La key es demasiado larga.");
+
+  let expiresAt;
+  if (body.expiresAt) {
+    expiresAt = new Date(body.expiresAt);
+    if (Number.isNaN(expiresAt.getTime())) throw new Error("expiresAt no es una fecha válida.");
+  } else {
+    const days = Number(body.days ?? 30);
+    if (!Number.isFinite(days) || days <= 0 || days > 3650) {
+      throw new Error("days debe ser un número entre 1 y 3650.");
+    }
+    expiresAt = new Date(Date.now() + days * 86400000);
   }
 
-  // Panel web de administración
-  if (req.method === "GET" && (u.pathname === "/panel" || u.pathname === "/panel/")) {
+  const result = await pool.query(
+    `INSERT INTO licenses (key, expires_at) VALUES ($1, $2)
+     RETURNING id, key, created_at, expires_at, blocked, device_id, last_used_at`,
+    [key, expiresAt]
+  );
+  return normalizeLicense(result.rows[0]);
+}
+
+async function handleLicenseValidation(res, url) {
+  const key = decodeURIComponent(url.pathname.slice("/api/license/".length));
+  const deviceId = url.searchParams.get("deviceId");
+
+  if (!key) return sendJson(res, 400, { error: "Falta la licencia." });
+  const license = await getLicense(key);
+
+  if (!license) {
+    return sendJson(res, 404, { active: false, message: "Licencia inválida o inactiva." });
+  }
+  if (license.blocked) {
+    return sendJson(res, 403, { license: { ...normalizeLicense(license), active: false }, message: "Esta licencia está bloqueada." });
+  }
+  if (new Date(license.expires_at).getTime() <= Date.now()) {
+    return sendJson(res, 403, { license: { ...normalizeLicense(license), active: false }, message: "Esta licencia está vencida." });
+  }
+  if (!deviceId || deviceId.length > 500) {
+    return sendJson(res, 400, { active: false, message: "Falta un deviceId válido." });
+  }
+  if (license.device_id && license.device_id !== deviceId) {
+    return sendJson(res, 403, { license: { ...normalizeLicense(license), active: false }, message: "Esta licencia ya está vinculada a otro dispositivo." });
+  }
+
+  const updated = await pool.query(
+    `UPDATE licenses SET device_id = COALESCE(device_id, $1), last_used_at = NOW()
+     WHERE id = $2
+     RETURNING id, key, created_at, expires_at, blocked, device_id, last_used_at`,
+    [deviceId, license.id]
+  );
+  return sendJson(res, 200, { license: normalizeLicense(updated.rows[0]) });
+}
+
+async function handleAdminRoutes(req, res, url) {
+  if (!requireAdmin(req, res)) return;
+
+  if (req.method === "GET" && url.pathname === "/api/licenses") {
+    return sendJson(res, 200, { licenses: await listLicenses() });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/licenses") {
     try {
-      const html = fs.readFileSync("./ALFRED_IOS_PANEL_ESTILO_PAGINA.html", "utf8");
-      res.writeHead(200, {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store"
-      });
-      return res.end(html);
+      const license = await createLicense(await readBody(req));
+      return sendJson(res, 201, license);
     } catch (err) {
-      return send(res, 500, {error:"No se pudo cargar el panel.", detail:String(err.message || err)});
+      if (err && err.code === "23505") return sendJson(res, 409, { error: "Esa key ya existe." });
+      return sendJson(res, 400, { error: err.message || "No se pudo crear la licencia." });
     }
   }
 
-  if (req.method === "GET" && u.pathname === "/") {
-    return send(res, 200, {ok:true, service:"ALFRED IOS API", panel:"/panel"});
+  const match = url.pathname.match(/^\/api\/licenses\/([^/]+)(?:\/(block|reset-device))?$/);
+  if (!match) return sendJson(res, 404, { error: "Ruta no encontrada." });
+
+  const key = decodeURIComponent(match[1]);
+  const action = match[2];
+
+  if (req.method === "POST" && action === "block") {
+    const body = await readBody(req);
+    const result = await pool.query(
+      `UPDATE licenses SET blocked = $1 WHERE key = $2
+       RETURNING id, key, created_at, expires_at, blocked, device_id, last_used_at`,
+      [Boolean(body.blocked), key]
+    );
+    if (!result.rows[0]) return sendJson(res, 404, { error: "Licencia no encontrada." });
+    return sendJson(res, 200, normalizeLicense(result.rows[0]));
   }
 
-  if (req.method === "GET" && u.pathname === "/health") {
-    return send(res, 200, {ok:true, service:"ALFRED IOS API", status:"online"});
+  if (req.method === "POST" && action === "reset-device") {
+    const result = await pool.query(
+      `UPDATE licenses SET device_id = NULL WHERE key = $1
+       RETURNING id, key, created_at, expires_at, blocked, device_id, last_used_at`, [key]
+    );
+    if (!result.rows[0]) return sendJson(res, 404, { error: "Licencia no encontrada." });
+    return sendJson(res, 200, normalizeLicense(result.rows[0]));
   }
 
-  // Consulta pública. Para una app con binding por dispositivo:
-  // GET /api/license/KEY?deviceId=UUID
-  if (req.method === "GET" && parts[0] === "api" && parts[1] === "license" && parts[2]) {
-    const key = keyPath(parts);
-    const db = loadDb();
-    const item = db[key];
+  if (req.method === "DELETE" && !action) {
+    const result = await pool.query(`DELETE FROM licenses WHERE key = $1 RETURNING key`, [key]);
+    if (!result.rows[0]) return sendJson(res, 404, { error: "Licencia no encontrada." });
+    return sendJson(res, 200, { ok: true, key: result.rows[0].key });
+  }
 
-    if (!item) return send(res, 404, {active:false, message:"Licencia no encontrada."});
+  return sendJson(res, 405, { error: "Método no permitido." });
+}
 
-    const deviceId = u.searchParams.get("deviceId");
-    if (deviceId) {
-      const h = hashDevice(deviceId);
-      if (item.deviceHash && item.deviceHash !== h) {
-        return send(res, 409, {
-          active:false,
-          code:"DEVICE_MISMATCH",
-          message:"Esta licencia ya está vinculada a otro dispositivo."
-        });
-      }
-      if (!item.deviceHash) {
-        item.deviceHash = h;
-        item.lastUsedAt = new Date().toISOString();
-        saveDb(db);
-      } else {
-        item.lastUsedAt = new Date().toISOString();
-        saveDb(db);
-      }
+const server = http.createServer(async (req, res) => {
+  try {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type, X-Admin-Token",
+        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS"
+      });
+      return res.end();
     }
 
-    return send(res, 200, licenseView(key, item));
-  }
+    const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
-  // Activación explícita para apps nativas:
-  // POST /api/license/activate {key, deviceId}
-  if (req.method === "POST" && parts[0] === "api" && parts[1] === "license" && parts[2] === "activate") {
-    try {
-      const data = await readBody(req);
-      const key = String(data.key || "").trim();
-      const deviceId = String(data.deviceId || "").trim();
-      if (!key || !deviceId) return send(res, 400, {error:"key y deviceId son obligatorios."});
-
-      const db = loadDb();
-      const item = db[key];
-      if (!item) return send(res, 404, {active:false, message:"Licencia no encontrada."});
-
-      const state = licenseView(key, item);
-      if (!state.active) return send(res, 403, state);
-
-      const h = hashDevice(deviceId);
-      if (item.deviceHash && item.deviceHash !== h) {
-        return send(res, 409, {
-          active:false,
-          code:"DEVICE_MISMATCH",
-          message:"Esta licencia ya está vinculada a otro dispositivo."
-        });
-      }
-
-      item.deviceHash = h;
-      item.lastUsedAt = new Date().toISOString();
-      saveDb(db);
-      return send(res, 200, licenseView(key, item));
-    } catch {
-      return send(res, 400, {error:"JSON inválido."});
+    if (req.method === "GET" && url.pathname === "/") {
+      return sendJson(res, 200, { ok: true, service: "ALFRED IOS API", database: "PostgreSQL" });
     }
-  }
-
-  // Admin: ver TODAS las licencias.
-  if (req.method === "GET" && u.pathname === "/api/licenses") {
-    if (!admin(req)) return send(res, 401, {error:"No autorizado."});
-    const db = loadDb();
-    const licenses = Object.entries(db).map(([key, item]) => licenseView(key, item));
-    licenses.sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    return send(res, 200, {licenses});
-  }
-
-  // Admin: crear licencia.
-  if (req.method === "POST" && u.pathname === "/api/licenses") {
-    if (!admin(req)) return send(res, 401, {error:"No autorizado."});
-
-    try {
-      const data = await readBody(req);
-      const days = Number(data.days || 30);
-      const key = String(data.key || ("ALFRED-" + crypto.randomBytes(5).toString("hex").toUpperCase())).trim();
-      const expiresAt = data.expiresAt ||
-        new Date(Date.now() + days * 86400000).toISOString();
-
-      if (!Number.isFinite(days) || days <= 0)
-        return send(res, 400, {error:"days inválido."});
-
-      if (!Number.isFinite(new Date(expiresAt).getTime()))
-        return send(res, 400, {error:"expiresAt inválido."});
-
-      const db = loadDb();
-      if (db[key]) return send(res, 409, {error:"Esa key ya existe."});
-
-      db[key] = {
-        active: true,
-        blocked: false,
-        createdAt: new Date().toISOString(),
-        expiresAt,
-        deviceHash: null,
-        lastUsedAt: null
-      };
-      saveDb(db);
-      return send(res, 200, licenseView(key, db[key]));
-    } catch {
-      return send(res, 400, {error:"JSON inválido."});
+    if (req.method === "GET" && url.pathname === "/health") {
+      await pool.query("SELECT 1");
+      return sendJson(res, 200, { ok: true, database: "connected" });
     }
-  }
-
-  // Admin: bloquear/desbloquear.
-  if (req.method === "POST" && parts[0] === "api" && parts[1] === "licenses" && parts[2] && parts[3] === "block") {
-    if (!admin(req)) return send(res, 401, {error:"No autorizado."});
-    try {
-      const data = await readBody(req);
-      const key = keyPath(parts);
-      const db = loadDb();
-      const item = db[key];
-      if (!item) return send(res, 404, {error:"Licencia no encontrada."});
-      item.blocked = data.blocked !== false;
-      item.active = !item.blocked;
-      saveDb(db);
-      return send(res, 200, licenseView(key, item));
-    } catch {
-      return send(res, 400, {error:"JSON inválido."});
+    if (req.method === "GET" && url.pathname.startsWith("/api/license/")) {
+      return handleLicenseValidation(res, url);
     }
+    if (url.pathname === "/api/licenses" || url.pathname.startsWith("/api/licenses/")) {
+      return handleAdminRoutes(req, res, url);
+    }
+    return sendJson(res, 404, { error: "Ruta no encontrada." });
+  } catch (err) {
+    console.error(err);
+    return sendJson(res, 500, { error: "Error interno del servidor." });
   }
-
-  // Admin: resetear vínculo del dispositivo.
-  if (req.method === "POST" && parts[0] === "api" && parts[1] === "licenses" && parts[2] && parts[3] === "reset-device") {
-    if (!admin(req)) return send(res, 401, {error:"No autorizado."});
-    const key = keyPath(parts);
-    const db = loadDb();
-    const item = db[key];
-    if (!item) return send(res, 404, {error:"Licencia no encontrada."});
-    item.deviceHash = null;
-    item.lastUsedAt = null;
-    saveDb(db);
-    return send(res, 200, {ok:true, message:"Dispositivo desvinculado. La próxima activación podrá vincular uno nuevo.", ...licenseView(key,item)});
-  }
-
-  // Admin: borrar licencia definitivamente.
-  if (req.method === "DELETE" && parts[0] === "api" && parts[1] === "licenses" && parts[2]) {
-    if (!admin(req)) return send(res, 401, {error:"No autorizado."});
-    const key = keyPath(parts);
-    const db = loadDb();
-    if (!db[key]) return send(res, 404, {error:"Licencia no encontrada."});
-    delete db[key];
-    saveDb(db);
-    return send(res, 200, {ok:true, message:"Licencia eliminada."});
-  }
-
-  return send(res, 404, {error:"Ruta no encontrada."});
 });
 
-server.listen(PORT, () => console.log(`ALFRED IOS API escuchando en :${PORT}`));
+async function start() {
+  try {
+    await pool.query("SELECT 1");
+    await ensureSchema();
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`ALFRED IOS API escuchando en el puerto ${PORT}`);
+      console.log("PostgreSQL conectado y tabla licenses lista.");
+    });
+  } catch (err) {
+    console.error("No se pudo iniciar la API:", err);
+    process.exit(1);
+  }
+}
+
+process.on("SIGTERM", async () => {
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+});
+
+start();
