@@ -1,13 +1,16 @@
 {
   "name": "alfred-ios-api",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "ALFRED IOS API de licencias con bloqueo y dispositivo \u00fanico",
+  "description": "ALFRED IOS API de licencias con PostgreSQL",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
   }
 }
