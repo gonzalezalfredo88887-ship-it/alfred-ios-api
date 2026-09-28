@@ -1,8 +1,8 @@
 {
   "name": "alfred-ios-api",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "ALFRED IOS API de licencias",
+  "description": "ALFRED IOS API de licencias con bloqueo y dispositivo \u00fanico",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
