@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ALFRED IOS — Gestión de licencias</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#070b12;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:18px}.page{max-width:1100px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}.brand{display:flex;gap:12px;align-items:center}.logo{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#315cff,#7c4dff);display:grid;place-items:center;font-weight:900;font-size:22px}h1{margin:0}.sub{color:#8995aa;font-size:13px}.card{background:#0f1622;border:1px solid #202c40;border-radius:22px;padding:20px;margin-bottom:18px}input,button{border-radius:12px;padding:12px;font-size:14px}input{background:#070c15;border:1px solid #29364c;color:#fff;width:100%;outline:0}button{border:0;background:#315cff;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.5}.token{display:grid;grid-template-columns:1fr auto;gap:10px}.dur{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.dur button{background:#182238;border:1px solid #2b3952}.create{margin-top:12px;width:100%;background:linear-gradient(135deg,#315cff,#5747ff)}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}.list{display:grid;gap:10px}.lic{border:1px solid #222f44;background:#0a101b;border-radius:16px;padding:15px}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.key{font-weight:800;word-break:break-all}.badge{font-size:11px;padding:5px 8px;border-radius:999px;background:#123323;color:#72e6a5}.badge.off{background:#32181c;color:#ff8585}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.meta div{background:#080d16;border-radius:10px;padding:9px}.meta b{display:block;font-size:14px}.meta span{font-size:10px;color:#738097}.actions{display:flex;gap:7px;margin-top:12px;flex-wrap:wrap}.actions button{width:auto;background:#182238;border:1px solid #2b3952}.actions .danger{background:#4a1820;border-color:#71303a}.actions .green{background:#123323;border-color:#275a3a}.msg{margin-top:10px;color:#9aa6b8;font-size:13px}.empty{text-align:center;color:#738097;padding:30px}@media(max-width:650px){.meta{grid-template-columns:1fr 1fr}.token{grid-template-columns:1fr}.row{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body><div class="page">
+<div class="top"><div class="brand"><div class="logo">A</div><div><h1>ALFRED IOS</h1><div class="sub">Gestión de licencias</div></div></div></div>
+
+<div class="card">
+<h2>Administrador</h2>
+<p class="sub">El token solo se usa desde este panel; no lo pongas dentro de la app.</p>
+<div class="token"><input id="token" type="password" placeholder="ADMIN_TOKEN"><button onclick="loadLicenses()">CARGAR</button></div>
+<div class="dur"><button onclick="setDays(1)">1 DÍA</button><button onclick="setDays(7)">7 DÍAS</button><button onclick="setDays(15)">15 DÍAS</button><button onclick="setDays(30)">30 DÍAS</button></div>
+<input id="days" type="hidden" value="30">
+<button class="create" onclick="createLicense()">CREAR LICENCIA DE 30 DÍAS</button>
+<div id="msg" class="msg"></div>
+</div>
+
+<div class="card">
+<div class="toolbar"><div><h2 style="margin:0">Todas las licencias</h2><div class="sub">No necesitas buscar una key individualmente.</div></div><button onclick="loadLicenses()">↻ ACTUALIZAR</button></div>
+<div id="list" class="list"><div class="empty">Introduce tu ADMIN_TOKEN y pulsa CARGAR.</div></div>
+</div>
+</div>
+<script>
+const API="https://alfred-ios-api-1.onrender.com";
+const $=id=>document.getElementById(id);
+function setDays(n){$("days").value=n;$("create").textContent="CREAR LICENCIA DE "+n+" DÍA"+(n===1?"":"S")}
+async function api(path,opt={}){const token=$("token").value.trim();if(!token)throw Error("Introduce tu ADMIN_TOKEN.");opt.headers={...(opt.headers||{}),"X-Admin-Token":token,"Content-Type":"application/json"};const r=await fetch(API+path,opt);const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||d.message||"Error");return d}
+async function createLicense(){const days=Number($("days").value);$("msg").textContent="Creando...";try{const d=await api("/api/licenses",{method:"POST",body:JSON.stringify({days})});$("msg").textContent="✓ Creada: "+d.key+" • vence "+fmt(d.expiresAt);await loadLicenses()}catch(e){$("msg").textContent="❌ "+e.message}}
+async function loadLicenses(){try{const d=await api("/api/licenses");render(d.licenses||[]);$("msg").textContent="✓ "+(d.licenses||[]).length+" licencia(s) cargada(s)."}catch(e){$("msg").textContent="❌ "+e.message}}
+function render(arr){const list=$("list");if(!arr.length){list.innerHTML='<div class="empty">No hay licencias creadas.</div>';return}list.innerHTML=arr.map(x=>{const active=x.active;return `<div class="lic"><div class="row"><div class="key">${esc(x.key)}</div><div class="badge ${active?"":"off"}">${active?"ACTIVA":x.blocked?"BLOQUEADA":"VENCIDA"}</div></div><div class="meta"><div><b>${fmt(x.createdAt)}</b><span>CREADA</span></div><div><b>${fmt(x.expiresAt)}</b><span>VENCE</span></div><div><b>${x.deviceBound?"1":"0"}</b><span>DISPOSITIVO</span></div><div><b>${fmt(x.lastUsedAt)}</b><span>ÚLTIMO USO</span></div></div><div class="actions"><button onclick="copyKey('${escAttr(x.key)}')">COPIAR KEY</button><button class="${x.blocked?"green":"danger"}" onclick="blockKey('${escAttr(x.key)}',${!x.blocked})">${x.blocked?"DESBLOQUEAR":"BLOQUEAR"}</button><button onclick="resetDevice('${escAttr(x.key)}')">RESET DISPOSITIVO</button><button class="danger" onclick="deleteKey('${escAttr(x.key)}')">ELIMINAR</button></div></div>`}).join("")}
+async function blockKey(key,blocked){if(!confirm((blocked?"¿Bloquear ":"¿Desbloquear ")+key+"?"))return;try{await api("/api/licenses/"+encodeURIComponent(key)+"/block",{method:"POST",body:JSON.stringify({blocked})});await loadLicenses()}catch(e){alert(e.message)}}
+async function resetDevice(key){if(!confirm("¿Resetear el dispositivo de "+key+"? La próxima activación podrá vincular otro dispositivo."))return;try{await api("/api/licenses/"+encodeURIComponent(key)+"/reset-device",{method:"POST"});await loadLicenses()}catch(e){alert(e.message)}}
+async function deleteKey(key){if(!confirm("¿Eliminar definitivamente "+key+"?"))return;try{await api("/api/licenses/"+encodeURIComponent(key),{method:"DELETE"});await loadLicenses()}catch(e){alert(e.message)}}
+function copyKey(k){navigator.clipboard.writeText(k).then(()=>alert("Key copiada."))}
+function fmt(v){if(!v)return"—";const d=new Date(v);return isNaN(d)?"—":d.toLocaleString("es-DO")}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function escAttr(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'")}
+setDays(30);
+</script>
+</body></html>
